@@ -8,22 +8,17 @@
         <description>MetalDuck updates</description>
         <language>en</language>
 
-        <!-- Example item — replace with output from generate_appcast.sh -->
-        <!--
         <item>
-            <title>Version 1.0.0</title>
-            <sparkle:releaseNotesLink>
-                https://github.com/lospi/metalduck/releases/tag/v1.0.0
-            </sparkle:releaseNotesLink>
-            <pubDate>Wed, 25 Mar 2026 00:00:00 +0000</pubDate>
+            <title>Version 0.1.0</title>
+            <sparkle:releaseNotesLink>https://github.com/lospi/metalduck/releases/tag/v0.1.0</sparkle:releaseNotesLink>
+            <pubDate>Wed, 25 Mar 2026 23:09:15 +0000</pubDate>
             <enclosure
-                url="https://github.com/lospi/metalduck/releases/download/v1.0.0/MetalDuck-1.0.0.zip"
-                sparkle:version="1"
-                sparkle:shortVersionString="1.0.0"
-                length="0"
-                type="application/octet-stream"
-                sparkle:edSignature="SIGNATURE_FROM_sign_update"/>
+                url="https://github.com/lospi/metalduck/releases/download/v0.1.0/MetalDuck-0.1.0.dmg"
+                sparkle:version="0.1.0"
+                sparkle:shortVersionString="0.1.0"
+                length="1330150"
+                type="application/x-apple-diskimage"
+                sparkle:edSignature="DX4YwvGclRliQ8Ad9jN5B8nrPbyh30GFf8Piu6knxldLNBgDjd6vvK3w3xKOMX5K0eszD71X9LtQHbqupkM0Cg=="/>
         </item>
-        -->
     </channel>
 </rss>
