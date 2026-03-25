@@ -20,11 +20,14 @@ struct ContentView: View {
                 .font(.title)
             
             if coordinator.appState.isCapturing {
-                VStack {
+                VStack(spacing: 4) {
                     Text("Capturing...")
                         .foregroundColor(.green)
                     Text("FPS: \(coordinator.appState.currentFPS, specifier: "%.1f")")
                         .font(.caption)
+                    Text(coordinator.appState.processingStatus)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
             } else {
                 Text("Ready to capture")
