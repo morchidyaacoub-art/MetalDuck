@@ -13,6 +13,5 @@ enum Constants {
     static let defaultSourceResolution = CGSize(width: 1920, height: 1080)
     static let defaultTargetResolution = CGSize(width: 3840, height: 2160)
     static let overlayWindowLevel = Int(CGWindowLevelKey.overlayWindow.rawValue)
-    static let metalCommandQueuePriority = DispatchQoS.QoSClass.utility
 }
 
