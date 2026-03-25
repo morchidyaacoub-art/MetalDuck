@@ -7,6 +7,7 @@
 
 import AppKit
 import Foundation
+import Sparkle
 import SwiftUI
 
 @Observable
@@ -14,36 +15,42 @@ class MenuBarController {
     private var statusItem: NSStatusItem?
     private var preferencesWindow: NSWindow?
     var appState: AppState
-    
-    init(appState: AppState) {
+    private weak var updaterController: SPUStandardUpdaterController?
+
+    init(appState: AppState, updaterController: SPUStandardUpdaterController) {
         self.appState = appState
+        self.updaterController = updaterController
         setupMenuBar()
     }
-    
+
     private func setupMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
+
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: "MetalDuck")
             button.image?.isTemplate = true
         }
-        
+
         let menu = NSMenu()
-        
+
         let startItem = NSMenuItem(title: "Start Capture", action: #selector(startCapture), keyEquivalent: "")
         startItem.target = self
         menu.addItem(startItem)
-        
+
         let stopItem = NSMenuItem(title: "Stop Capture", action: #selector(stopCapture), keyEquivalent: "")
         stopItem.target = self
         menu.addItem(stopItem)
-        
+
         menu.addItem(NSMenuItem.separator())
-        
+
+        let checkUpdatesItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdates), keyEquivalent: "")
+        checkUpdatesItem.target = self
+        menu.addItem(checkUpdatesItem)
+
         let preferencesItem = NSMenuItem(title: "Preferences...", action: #selector(showPreferences), keyEquivalent: ",")
         preferencesItem.target = self
         menu.addItem(preferencesItem)
-        
+
         menu.addItem(NSMenuItem.separator())
         
         let quitItem = NSMenuItem(title: "Quit MetalDuck", action: #selector(quitApp), keyEquivalent: "q")
@@ -54,6 +61,10 @@ class MenuBarController {
         appState.menuBarItem = statusItem
     }
     
+    @objc private func checkForUpdates() {
+        updaterController?.checkForUpdates(nil)
+    }
+
     @objc private func startCapture() {
         NotificationCenter.default.post(name: .startCapture, object: nil)
     }

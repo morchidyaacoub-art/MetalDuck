@@ -5,60 +5,53 @@
 //  Created by Roberto Camargo on 07/11/25.
 //
 
+import CoreMedia
 import CoreVideo
 import Foundation
 import ScreenCaptureKit
-import CoreMedia
+import Sparkle
 
 @MainActor
 @Observable
 class AppCoordinator {
     static let shared = AppCoordinator()
-    
+
     var appState = AppState()
     var captureSettings = CaptureSettings()
     var upscaleSettings = UpscaleSettings()
-    
-    private var metalRenderer: MetalRenderer?
+
     private var videoToolboxUpscaler: VideoToolboxUpscaler?
-    private var metalPipeline: MetalPipeline?
-    private var overlayManager: OverlayManager?
+    private(set) var overlayManager: OverlayManager?
     private var captureManager: ScreenCaptureManager?
     private var menuBarController: MenuBarController?
+    private var captureTask: Task<Void, Never>?
+    private let updaterDelegate = UpdaterDelegate()
+    private var updaterController: SPUStandardUpdaterController?
+
     @available(macOS 14.0, *)
     private var interpolator: RealTimeFrameInterpolation?
-    
+
     private var frameCount = 0
     private var lastFPSTime = Date()
-    
+    private var interpolatedFrameCount = 0
+    private var passthroughFrameCount = 0
+    private var sourceFrameCount = 0
+    private var currentSourceFPS: Double = 0
+    private var lastFrameTimestamp: CMTime?
+
     init() {
         setupComponents()
         setupNotifications()
     }
-    
+
     private func setupComponents() {
-        // Setup Metal
-        guard let renderer = MetalRenderer() else {
-            appState.setError("Failed to initialize Metal renderer")
-            return
-        }
-        
-        metalRenderer = renderer
-        videoToolboxUpscaler = VideoToolboxUpscaler(renderer: renderer, settings: upscaleSettings)
-        metalPipeline = MetalPipeline(renderer: renderer, upscaler: videoToolboxUpscaler!, settings: upscaleSettings)
-        
-        // Setup Overlay
-        overlayManager = OverlayManager(renderer: renderer)
-        
-        // Setup Menu Bar
-        menuBarController = MenuBarController(appState: appState)
-        
-        // Setup Capture (will be initialized when starting capture)
-        if #available(macOS 12.3, *) {
-            // Capture manager will be created on start
-        }
+        videoToolboxUpscaler = VideoToolboxUpscaler(settings: upscaleSettings)
+        overlayManager = OverlayManager()
+        let controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: updaterDelegate, userDriverDelegate: nil)
+        updaterController = controller
+        menuBarController = MenuBarController(appState: appState, updaterController: controller)
     }
-    
+
     private func setupNotifications() {
         NotificationCenter.default.addObserver(
             forName: .startCapture,
@@ -69,7 +62,7 @@ class AppCoordinator {
                 await self?.startCapture()
             }
         }
-        
+
         NotificationCenter.default.addObserver(
             forName: .stopCapture,
             object: nil,
@@ -80,11 +73,10 @@ class AppCoordinator {
             }
         }
     }
-    
+
     func startCapture() async {
         guard !appState.isCapturing else { return }
-        
-        // Check permissions
+
         if !PermissionManager.shared.hasScreenRecordingPermission {
             let granted = await PermissionManager.shared.requestScreenRecordingPermission()
             if !granted {
@@ -92,28 +84,40 @@ class AppCoordinator {
                 return
             }
         }
-        
-        guard let renderer = metalRenderer,
-              let overlay = overlayManager
-        else {
-            appState.setError("Metal renderer or overlay not initialized")
+
+        guard let overlay = overlayManager else {
+            appState.setError("Overlay not initialized")
             return
         }
-        
+
         if #available(macOS 12.3, *) {
-            captureManager = ScreenCaptureManager(settings: captureSettings, delegate: self)
-            
+            // Match capture resolution to window size before starting capture
+            await matchCaptureResolutionToWindow()
+
+            captureManager = ScreenCaptureManager(settings: captureSettings)
+
             do {
-                try await captureManager?.startCapture()
+                let stream = try await captureManager!.startCapture()
                 appState.startCapture()
+
                 if #available(macOS 14.0, *) {
-                    interpolator = nil // will initialize lazily on first frame
+                    interpolator = nil
                 }
-                
-                // Create overlay window
-                let screenFrame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080)
-                overlay.createOverlayWindow(frame: screenFrame)
-                overlay.show()
+
+                createDisplayForCapture(overlay: overlay)
+
+                captureTask = Task { [weak self] in
+                    do {
+                        for try await frame in stream {
+                            await self?.processFrame(frame)
+                        }
+                    } catch {
+                        await MainActor.run {
+                            self?.appState.setError("Capture stream error: \(error.localizedDescription)")
+                        }
+                        await self?.stopCapture()
+                    }
+                }
             } catch {
                 appState.setError("Failed to start capture: \(error.localizedDescription)")
             }
@@ -121,98 +125,238 @@ class AppCoordinator {
             appState.setError("ScreenCaptureKit requires macOS 12.3 or later")
         }
     }
-    
+
     func stopCapture() async {
         guard appState.isCapturing else { return }
-        
+
+        // Mark as not capturing first to prevent re-entrant calls
+        appState.stopCapture()
+
+        let task = captureTask
+        captureTask = nil
+        task?.cancel()
+
         if #available(macOS 12.3, *) {
             await captureManager?.stopCapture()
+            captureManager = nil
         }
-        
-        overlayManager?.hide()
-        appState.stopCapture()
+
+        // Stop the interpolator's VTFrameProcessor session
+        if #available(macOS 14.0, *) {
+            await interpolator?.stop()
+            interpolator = nil
+        }
+
+        overlayManager?.close()
+        lastFrameTimestamp = nil
     }
-    
-    private func processFrame(_ pixelBuffer: CVPixelBuffer) {
-        guard let pipeline = metalPipeline,
-              let overlay = overlayManager
-        else {
-            return
-        }
-        
-        // Upscale the frame using VideoToolbox
-        pipeline.processFrame(pixelBuffer: pixelBuffer) { [weak self] upscaledTexture in
-            guard let texture = upscaledTexture else { return }
-            
-            DispatchQueue.main.async {
-                overlay.updateTexture(texture)
-                self?.updateFPS()
+
+    private func processFrame(_ frame: CapturedFrame) async {
+        guard let overlay = overlayManager else { return }
+        sourceFrameCount += 1
+
+        let currentPTS = frame.presentationTimestamp
+        let prevPTS = lastFrameTimestamp ?? currentPTS
+        lastFrameTimestamp = currentPTS
+
+        // On first frame, set content ratio so overlay clips the black padding
+        if sourceFrameCount == 1 {
+            let bufferWidth = CGFloat(CVPixelBufferGetWidth(frame.pixelBuffer))
+            let contentWidth = frame.contentRect.width * frame.scaleFactor
+            if bufferWidth > 0 && contentWidth > 0 && contentWidth < bufferWidth {
+                let ratio = contentWidth / bufferWidth
+                overlay.setContentWidthRatio(ratio)
+                print("   📐 Content width ratio: \(String(format: "%.3f", ratio)) (\(Int(contentWidth))/\(Int(bufferWidth)) px)")
             }
         }
+
+
+
+        // If interpolation is enabled, run through interpolator
+        if #available(macOS 14.0, *),
+           upscaleSettings.mode == .frameInterpolation || upscaleSettings.frameInterpolationEnabled
+        {
+            do {
+                if interpolator == nil {
+                    let width = Int32(CVPixelBufferGetWidth(frame.pixelBuffer))
+                    let height = Int32(CVPixelBufferGetHeight(frame.pixelBuffer))
+                    let dims = CMVideoDimensions(width: width, height: height)
+                    let numBetween = max(1, min(3, upscaleSettings.interpolationMultiplier - 1))
+                    let res = upscaleSettings.processingResolution.dimensions
+                    interpolator = try RealTimeFrameInterpolation(
+                        numFrames: numBetween,
+                        inputDimensions: dims,
+                        maxWidth: res.width,
+                        maxHeight: res.height,
+                        spatialUpscale: upscaleSettings.spatialUpscaleEnabled
+                    )
+                    try await interpolator?.start()
+                }
+                if let outputs = try await interpolator?.process(
+                    currentBuffer: frame.pixelBuffer,
+                    currentTimestamp: currentPTS
+                ) {
+                    let isModelReady = await interpolator?.modelReady ?? false
+
+                    if isModelReady {
+                        interpolatedFrameCount += outputs.count
+                        if passthroughFrameCount > 0 {
+                            print("   ✅ Interpolation active! \(outputs.count) interpolated + 1 original per input")
+                            passthroughFrameCount = 0
+                        }
+                        let totalPerInput = outputs.count + 1
+                        appState.processingStatus = "Interpolating (\(totalPerInput) frames/input)"
+
+                        // Calculate evenly spaced offsets for smooth frame pacing
+                        let frameDuration = CMTimeGetSeconds(currentPTS) - CMTimeGetSeconds(prevPTS)
+                        let step = frameDuration / Double(totalPerInput)
+
+                        for (i, buffer) in outputs.enumerated() {
+                            overlay.enqueueBuffer(buffer, offsetFromNow: step * Double(i))
+                            updateFPS()
+                        }
+                        // Original frame at the end of the interval
+                        overlay.enqueueBuffer(frame.pixelBuffer, offsetFromNow: step * Double(outputs.count))
+                        updateFPS()
+                    } else if await interpolator?.modelFailed ?? false {
+                        // Model timed out — auto-fallback to lower resolution
+                        let current = upscaleSettings.processingResolution
+                        if let lower = current.lowerResolution {
+                            print("   🔄 \(current.rawValue) unsupported, falling back to \(lower.rawValue)")
+                            appState.processingStatus = "\(current.rawValue) unsupported, using \(lower.rawValue)"
+                            upscaleSettings.processingResolution = lower
+                            await interpolator?.stop()
+                            interpolator = nil
+                            // Next frame will recreate with lower resolution
+                        } else {
+                            appState.processingStatus = "Interpolation unsupported on this device"
+                        }
+                        overlay.displayBufferImmediate(frame.pixelBuffer)
+                        updateFPS()
+                    } else {
+                        passthroughFrameCount += 1
+                        appState.processingStatus = "Loading model (\(upscaleSettings.processingResolution.rawValue))..."
+                        overlay.displayBufferImmediate(frame.pixelBuffer)
+                        updateFPS()
+                    }
+                    return
+                }
+            } catch {
+                // Fallback to passthrough on error
+            }
+        }
+
+        // Passthrough path
+        appState.processingStatus = "Passthrough (\(upscaleSettings.mode.rawValue))"
+        overlay.displayBufferImmediate(frame.pixelBuffer)
+        updateFPS()
     }
-    
+
     private func updateFPS() {
         frameCount += 1
         let now = Date()
         let elapsed = now.timeIntervalSince(lastFPSTime)
-        
+
         if elapsed >= 1.0 {
             let fps = Double(frameCount) / elapsed
+            currentSourceFPS = Double(sourceFrameCount) / elapsed
             appState.updateFPS(fps)
             frameCount = 0
+            sourceFrameCount = 0
             lastFPSTime = now
+
+            var processingRes: CGSize? = nil
+            if #available(macOS 14.0, *), let interp = interpolator {
+                let outDims = interp.outputDimensions
+                processingRes = CGSize(width: CGFloat(outDims.width), height: CGFloat(outDims.height))
+            }
+            overlayManager?.updateDebugInfo(
+                fps: fps,
+                sourceFPS: currentSourceFPS,
+                status: appState.processingStatus,
+                captureRes: captureSettings.captureResolution,
+                processingRes: processingRes,
+                mode: upscaleSettings.mode.rawValue
+            )
         }
     }
-    
+
+    private func matchCaptureResolutionToWindow() async {
+        // No-op: window ID may map to auxiliary windows with tiny dimensions.
+        // Default 1920x1080 is reliable. The minor content padding (~3%) is acceptable.
+    }
+
+    /// Creates the appropriate display: overlay on target window, or standalone window.
+    private func createDisplayForCapture(overlay: OverlayManager) {
+        if let windowID = captureSettings.targetWindowID {
+            overlay.createOverlayOnWindow(windowID: windowID)
+            overlay.show()
+            print("   🎯 Overlay mode: tracking window \(windowID)")
+        } else {
+            let captureSize = captureSettings.captureResolution
+            overlay.createDisplayWindow(contentSize: captureSize)
+            overlay.show()
+            print("   🖥️ Standalone window mode")
+        }
+    }
+
+    func setDebugOverlay(_ visible: Bool) {
+        overlayManager?.showDebugOverlay = visible
+    }
+
     func updateUpscaleSettings(_ newSettings: UpscaleSettings) {
         upscaleSettings = newSettings
         videoToolboxUpscaler?.updateSettings(newSettings)
     }
-    
+
     // MARK: - Picker
+
     @available(macOS 12.3, *)
     func presentPicker() {
-        captureManager?.setPickerActive(true)
+        if captureManager == nil {
+            captureManager = ScreenCaptureManager(settings: captureSettings)
+            captureManager?.onPickerFilterSelected = { [weak self] filter in
+                Task { @MainActor in
+                    await self?.startCaptureWithFilter(filter)
+                }
+            }
+        }
         captureManager?.presentPicker()
     }
-}
 
-@available(macOS 12.3, *)
-extension AppCoordinator: CaptureDelegate {
-    func didCaptureFrame(_ pixelBuffer: CVPixelBuffer, timestamp: CMTime) {
-        // If interpolation is enabled, run through interpolator; else pass-through.
-        if #available(macOS 14.0, *),
-           upscaleSettings.mode == .frameInterpolation || upscaleSettings.frameInterpolationEnabled {
-            Task { @MainActor in
+    @available(macOS 12.3, *)
+    private func startCaptureWithFilter(_ filter: SCContentFilter) async {
+        // If already capturing, the filter was applied to the running session
+        guard !appState.isCapturing else { return }
+
+        guard let overlay = overlayManager else { return }
+
+        do {
+            let stream = try await captureManager!.startCapture()
+            // Apply the picked filter to the new session
+            await captureManager?.applyPickerFilter(filter)
+            appState.startCapture()
+
+            if #available(macOS 14.0, *) {
+                interpolator = nil
+            }
+
+            createDisplayForCapture(overlay: overlay)
+
+            captureTask = Task { [weak self] in
                 do {
-                    if interpolator == nil {
-                        let width = Int32(CVPixelBufferGetWidth(pixelBuffer))
-                        let height = Int32(CVPixelBufferGetHeight(pixelBuffer))
-                        let dims = CMVideoDimensions(width: width, height: height)
-                        let numBetween = max(1, min(3, upscaleSettings.interpolationMultiplier - 1))
-                        interpolator = try RealTimeFrameInterpolation(numFrames: numBetween, inputDimensions: dims)
-                        try interpolator?.start()
-                    }
-                    if let outputs = try await interpolator?.process(currentBuffer: pixelBuffer, currentTimestamp: timestamp) {
-                        for buffer in outputs {
-                            self.processFrame(buffer)
-                        }
-                        return
+                    for try await frame in stream {
+                        await self?.processFrame(frame)
                     }
                 } catch {
-                    // Fallback to passthrough on error
+                    await MainActor.run {
+                        self?.appState.setError("Capture stream error: \(error.localizedDescription)")
+                    }
+                    await self?.stopCapture()
                 }
-                self.processFrame(pixelBuffer)
             }
-        } else {
-            processFrame(pixelBuffer)
-        }
-    }
-    
-    func captureDidFail(with error: Error) {
-        Task { @MainActor in
-            appState.setError("Capture failed: \(error.localizedDescription)")
-            await stopCapture()
+        } catch {
+            appState.setError("Failed to start capture: \(error.localizedDescription)")
         }
     }
 }

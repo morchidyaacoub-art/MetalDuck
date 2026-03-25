@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>MetalDuck</title>
+        <link>https://github.com/lospi/metalduck/releases</link>
+        <description>MetalDuck updates</description>
+        <language>en</language>
+
+        <!-- Example item — replace with output from generate_appcast.sh -->
+        <!--
+        <item>
+            <title>Version 1.0.0</title>
+            <sparkle:releaseNotesLink>
+                https://github.com/lospi/metalduck/releases/tag/v1.0.0
+            </sparkle:releaseNotesLink>
+            <pubDate>Wed, 25 Mar 2026 00:00:00 +0000</pubDate>
+            <enclosure
+                url="https://github.com/lospi/metalduck/releases/download/v1.0.0/MetalDuck-1.0.0.zip"
+                sparkle:version="1"
+                sparkle:shortVersionString="1.0.0"
+                length="0"
+                type="application/octet-stream"
+                sparkle:edSignature="SIGNATURE_FROM_sign_update"/>
+        </item>
+        -->
+    </channel>
+</rss>
