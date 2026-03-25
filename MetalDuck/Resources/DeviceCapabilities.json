@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "lastUpdated": "2026-03-25",
+  "entries": [
+    {
+      "chipPattern": "Apple M1 Pro",
+      "frameInterpolation": {
+        "supported": ["360p", "720p"],
+        "unsupported": ["1080p", "1440p"],
+        "recommended": "720p"
+      },
+      "superResolution": {
+        "maxInputLabel": "960×960",
+        "supportedInputs": ["360p (640×360)", "540p (960×540)"],
+        "unsupportedInputs": ["720p (1280×720)", "1080p (1920×1080)"]
+      },
+      "reportCount": 1,
+      "notes": "Confirmed via MetalDuck diagnostics (macOS 26.4)"
+    }
+  ]
+}
