@@ -14,46 +14,51 @@ import CoreMedia
 class CaptureSession {
     private var stream: SCStream?
     private var streamOutput: StreamOutput?
-    weak var delegate: CaptureDelegate?
     private let settings: CaptureSettings
-    
-    init(settings: CaptureSettings, delegate: CaptureDelegate) {
+
+    private var continuation: AsyncThrowingStream<CapturedFrame, Error>.Continuation?
+
+    init(settings: CaptureSettings) {
         self.settings = settings
-        self.delegate = delegate
     }
-    
-    func start() async throws {
+
+    func startCapture() async throws -> AsyncThrowingStream<CapturedFrame, Error> {
         guard let contentFilter = await settings.contentFilter() else {
             throw CaptureError.invalidContentFilter
         }
-        
+
         let streamConfig: SCStreamConfiguration
         if #available(macOS 15.0, *), let preset = settings.selectedDynamicRangePreset?.scDynamicRangePreset {
             streamConfig = SCStreamConfiguration(preset: preset)
         } else {
             streamConfig = SCStreamConfiguration()
         }
-        
+
         streamConfig.width = Int(settings.captureResolution.width)
         streamConfig.height = Int(settings.captureResolution.height)
         streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(settings.frameRate))
-        streamConfig.queueDepth = 3
+        streamConfig.queueDepth = 5
         streamConfig.showsCursor = false
         streamConfig.capturesAudio = false
-        
-        streamOutput = StreamOutput(delegate: delegate)
-        
+
+        let (frameStream, continuation) = AsyncThrowingStream.makeStream(of: CapturedFrame.self)
+        self.continuation = continuation
+
+        streamOutput = StreamOutput(continuation: continuation)
+
         stream = SCStream(filter: contentFilter, configuration: streamConfig, delegate: nil)
-        
+
         try stream?.addStreamOutput(
             streamOutput!,
             type: .screen,
             sampleHandlerQueue: DispatchQueue(label: "com.metalduck.capture", qos: .userInitiated)
         )
-        
+
         try await stream?.startCapture()
+
+        return frameStream
     }
-    
+
     func updateContentFilter(_ filter: SCContentFilter) async {
         do {
             try await stream?.updateContentFilter(filter)
@@ -61,18 +66,19 @@ class CaptureSession {
             print("Error updating content filter: \(error.localizedDescription)")
         }
     }
-    
+
     func stop() async {
         do {
             try await stream?.stopCapture()
         } catch {
-            // Log error but continue with cleanup
             print("Error stopping capture: \(error.localizedDescription)")
         }
+        continuation?.finish()
+        continuation = nil
         stream = nil
         streamOutput = nil
     }
-    
+
     enum CaptureError: Error {
         case invalidContentFilter
         case streamCreationFailed
@@ -81,19 +87,15 @@ class CaptureSession {
 
 @available(macOS 12.3, *)
 private class StreamOutput: NSObject, SCStreamOutput {
-    weak var delegate: CaptureDelegate?
-    
-    init(delegate: CaptureDelegate?) {
-        self.delegate = delegate
+    private let continuation: AsyncThrowingStream<CapturedFrame, Error>.Continuation
+
+    init(continuation: AsyncThrowingStream<CapturedFrame, Error>.Continuation) {
+        self.continuation = continuation
     }
-    
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            return
-        }
-        
-        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        delegate?.didCaptureFrame(pixelBuffer, timestamp: timestamp)
+
+    nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen else { return }
+        guard let frame = CapturedFrame.from(sampleBuffer: sampleBuffer) else { return }
+        continuation.yield(frame)
     }
 }
-
