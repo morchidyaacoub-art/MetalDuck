@@ -16,6 +16,7 @@ class AppState {
     var isOverlayVisible: Bool = false
     var currentFPS: Double = 0.0
     var captureError: String?
+    var processingStatus: String = "Idle"
     
     // Menu bar state
     var menuBarItem: NSStatusItem?

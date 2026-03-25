@@ -8,6 +8,32 @@
 import Foundation
 import VideoToolbox
 
+enum ProcessingResolution: String, Codable, CaseIterable {
+    case p360 = "360p"
+    case p720 = "720p"
+    case p1080 = "1080p"
+    case p1440 = "1440p"
+
+    var dimensions: (width: Int, height: Int) {
+        switch self {
+        case .p360:  return (640, 360)
+        case .p720:  return (1280, 720)
+        case .p1080: return (1920, 1080)
+        case .p1440: return (2560, 1440)
+        }
+    }
+
+    /// Returns the next lower resolution, or nil if already at minimum.
+    var lowerResolution: ProcessingResolution? {
+        switch self {
+        case .p1440: return .p1080
+        case .p1080: return .p720
+        case .p720:  return .p360
+        case .p360:  return nil
+        }
+    }
+}
+
 enum UpscaleMode: String, Codable, CaseIterable {
     case temporal = "Temporal"
     case quality = "Quality"
@@ -43,7 +69,9 @@ struct UpscaleSettings: Codable {
     
     // Frame Interpolation parameters
     var frameInterpolationEnabled: Bool = false
-    var interpolationMultiplier: Int = 2 // Frame rate multiplier (e.g., 2x = double the frame rate)
+    var interpolationMultiplier: Int = 2
+    var processingResolution: ProcessingResolution = .p720
+    var spatialUpscaleEnabled: Bool = false
     
     init() {
         self.mode = .temporal
